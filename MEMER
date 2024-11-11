@@ -1,0 +1,211 @@
+import tkinter as tk
+from tkinter import simpledialog, messagebox
+from PIL import Image, ImageTk
+import os
+
+### Function to draw egg shape
+def draw_tamagotchi_egg(canvas, center_x, center_y, width, height):
+    """Draws a Tamagotchi-style egg shape with an inner screen and buttons."""
+    
+    ### Outer Egg Shape
+    outer_egg_width = width
+    outer_egg_height = height
+    canvas.create_oval(
+        center_x - outer_egg_width // 2, center_y - outer_egg_height // 2,
+        center_x + outer_egg_width // 2, center_y + outer_egg_height // 2,
+        fill="#FFC0CB", outline="#FF69B4", width=5
+    )
+
+    ### Inner Frame of the Egg
+    inner_frame_width = int(outer_egg_width * 0.7)
+    inner_frame_height = int(outer_egg_height * 0.6)
+    canvas.create_oval(
+        center_x - inner_frame_width // 2, center_y - inner_frame_height // 2,
+        center_x + inner_frame_width // 2, center_y + inner_frame_height // 2,
+        fill="#ADD8E6", outline="#FF1493", width=5
+    )
+
+    ### Screen Area (Inner Rectangle)
+    screen_width = int(inner_frame_width * 0.8)
+    screen_height = int(inner_frame_height * 0.6)
+    screen_x1 = center_x - screen_width // 2
+    screen_y1 = center_y - screen_height // 2
+    screen_x2 = center_x + screen_width // 2
+    screen_y2 = center_y + screen_height // 2
+
+    canvas.create_rectangle(screen_x1, screen_y1, screen_x2, screen_y2,
+                            fill="#ADD8E6", outline="#4682B4", width=3)
+
+    ### Store the screen area dimensions for later use
+    return (screen_x1, screen_y1, screen_x2, screen_y2)
+
+def update_screen_image(canvas, image_files, screen_coords, index):
+    """Update the image displayed in the screen area of the Tamagotchi egg."""
+    screen_x1, screen_y1, screen_x2, screen_y2 = screen_coords
+    screen_width = screen_x2 - screen_x1
+    screen_height = screen_y2 - screen_y1
+
+    if image_files:
+        image_path = image_files[index % len(image_files)]
+        image = Image.open(image_path)
+        image = image.resize((screen_width, screen_height), Image.LANCZOS)
+        photo = ImageTk.PhotoImage(image)
+
+        ### Add the image to canvas
+        canvas.image = photo  ### Reference to avoid garbage collection
+        canvas.create_image((screen_x1 + screen_width // 2, screen_y1 + screen_height // 2), image=photo, anchor="center")
+
+def on_left_button_press():
+    """Callback for the left button press to go to the previous image."""
+    global current_image_index
+    current_image_index -= 1
+    update_screen_image(canvas, image_files, screen_coords, current_image_index)
+
+def on_right_button_press():
+    """Callback for the right button press to go to the next image."""
+    global current_image_index
+    current_image_index += 1
+    update_screen_image(canvas, image_files, screen_coords, current_image_index)
+
+def on_middle_button_press():
+    """Callback for the middle button press to confirm the current image or save the text."""
+    global text_entry, text_displayed, text_saved, text_mode, text_entry_label
+    if not text_entry:
+        ### Create text entry box 
+        text_entry_label = tk.Label(root, text="Top:")
+        text_entry_label.pack()
+        text_entry = tk.Entry(root)
+        text_entry.pack()
+        text_entry.bind("<KeyRelease>", on_text_change)
+        text_displayed = canvas.create_text(
+            (screen_coords[0] + screen_coords[2]) // 2, screen_coords[1] + 20,
+            text="", fill="black", font=("Arial", 29), anchor="n"
+        )
+        text_mode = "top"
+    elif text_mode == "top":
+        ### Save the TOP text
+        text_saved = canvas.itemcget(text_displayed, "text")
+        print(f"Top text saved: {text_saved}")
+        text_entry_label.config(text="Bottom:")
+        text_displayed = canvas.create_text(
+            (screen_coords[0] + screen_coords[2]) // 2, screen_coords[3] - 20,
+            text="", fill="black", font=("Arial", 29), anchor="s"
+        )
+        text_entry.delete(0, tk.END)
+        text_mode = "bottom"
+    elif text_mode == "bottom":
+        ### Save BOTTOM to image
+        text_saved = canvas.itemcget(text_displayed, "text")
+        print(f"Bottom text saved: {text_saved}")
+        text_entry_label.destroy()
+        text_entry.destroy()
+        text_entry = None
+        text_mode = "share"
+        ### Call the share function
+        share_image_with_friend()
+
+def share_image_with_friend():
+    """Function to share the image with a friend via phone number, with confirmation."""
+    while True:
+        phone_number = simpledialog.askstring("Share Image", "Enter your friend's phone number:")
+        if phone_number:
+            confirm = messagebox.askyesno("Confirm Number", f"Is this the correct number?\n{phone_number}")
+            if confirm:
+                ##### Share
+                messagebox.showinfo("Image Shared", f"Image and text successfully shared with {phone_number}")
+                print(f"Image and text shared with {phone_number}")
+                break  ### Exit loop if confirmed
+            else:
+                messagebox.showinfo("Re-enter Number", "Please re-enter the phone number.")
+        else:
+            messagebox.showwarning("No Phone Number", "You did not enter a phone number.")
+            break
+
+
+def on_text_change(event):
+    """Callback to update the text on the screen as the user types and scale it down if needed."""
+    global text_displayed
+    
+    ### Get text
+    new_text = text_entry.get()
+
+    ### Set initial font size
+    font_size = 29
+    max_width = screen_coords[2] - screen_coords[0] - 10  ### Width of the screen
+
+    ### Create temporary font
+    font = ("Arial", font_size)
+    text_id = canvas.create_text(0, 0, text=new_text, font=font)
+    text_width = canvas.bbox(text_id)[2] - canvas.bbox(text_id)[0]
+    canvas.delete(text_id)  ### Remove temporary text
+
+    ### Scale down
+    while text_width > max_width and font_size > 8:  ### Min font
+        font_size -= 1
+        font = ("Arial", font_size)
+        text_id = canvas.create_text(0, 0, text=new_text, font=font)
+        text_width = canvas.bbox(text_id)[2] - canvas.bbox(text_id)[0]
+        canvas.delete(text_id)
+
+    ### Update display tex
+    canvas.itemconfig(text_displayed, text=new_text, font=("Arial", font_size))
+
+### Main application setup
+root = tk.Tk()
+root.title("Tamagotchi-Style Egg")
+
+### Convert to pixels
+height_in_inches = 4
+pixels_per_inch = 96
+egg_height = int(height_in_inches * pixels_per_inch)  ### Height in pixels
+egg_width = int(egg_height * 0.7) 
+
+### Create canvasfor  egg
+canvas = tk.Canvas(root, width=egg_width + 100, height=egg_height + 100, bg="#DAF0F7")
+canvas.pack()
+
+### Path to the folder 
+image_folder_path = "/Users/jessestucker/Desktop/School/SDEV140/Module 8/Final Project/Meme images"
+image_files = [os.path.join(image_folder_path, f) for f in os.listdir(image_folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))]
+
+current_image_index = 0
+text_entry = None
+text_displayed = None
+text_saved = ""
+text_mode = None
+text_entry_label = None
+
+### Draw the egg
+screen_coords = draw_tamagotchi_egg(canvas, center_x=egg_width // 2 + 50, center_y=egg_height // 2 + 50,
+                                    width=egg_width, height=egg_height)
+
+if image_files:
+    update_screen_image(canvas, image_files, screen_coords, current_image_index)
+else:
+    print("No images found in the specified folder.")
+
+button_radius = 10
+button_y = egg_height // 2 + 50 + egg_height // 4
+
+### Left Button
+left_button = canvas.create_polygon(egg_width // 2 + 50 - 45, button_y,
+                                    egg_width // 2 + 50 - 30, button_y - 10,
+                                    egg_width // 2 + 50 - 30, button_y + 10,
+                                    fill="#F8B400", outline="#4682B4", width=2)
+canvas.tag_bind(left_button, "<Button-1>", lambda event: on_left_button_press())
+
+### Middle Button (Confirm)
+middle_button = canvas.create_oval(egg_width // 2 + 50 - button_radius, button_y - button_radius,
+                                   egg_width // 2 + 50 + button_radius, button_y + button_radius,
+                                   fill="#F8B400", outline="#4682B4", width=2)
+canvas.tag_bind(middle_button, "<Button-1>", lambda event: on_middle_button_press())
+
+### Right Button (Arrow)
+right_button = canvas.create_polygon(egg_width // 2 + 50 + 45, button_y,
+                                     egg_width // 2 + 50 + 30, button_y - 10,
+                                     egg_width // 2 + 50 + 30, button_y + 10,
+                                     fill="#F8B400", outline="#5A5A5A", width=2)
+canvas.tag_bind(right_button, "<Button-1>", lambda event: on_right_button_press())
+
+# Run tkinter main loop
+root.mainloop()
